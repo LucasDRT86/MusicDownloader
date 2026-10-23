@@ -1,6 +1,6 @@
 # MusicDownloader
 
-Petite app Android perso : colle une URL YouTube (ou partage une vidéo depuis l'app YouTube) et l'audio est enregistré en MP3 dans `Musique/MusicDownloader`.
+Petite app Android perso : colle un lien YouTube (ou partage une vidéo depuis l'app YouTube), vérifie l'aperçu (miniature, titre, durée) puis télécharge l'audio en MP3 dans `Musique/MusicDownloader`. Les playlists entières sont prises en charge et rangées dans un sous-dossier à leur nom.
 
 Basée sur [youtubedl-android](https://github.com/JunkFood02/youtubedl-android) (yt-dlp + ffmpeg embarqués).
 
@@ -12,7 +12,8 @@ Sur le téléphone : ouvre la dernière release, télécharge `MusicDownloader.a
 
 ## Utilisation
 
-- Ouvre l'app, colle le lien, appuie sur « Télécharger en MP3 ».
-- Ou dans YouTube : **Partager** → **Music Downloader**, le téléchargement démarre tout seul.
+- Ouvre l'app, colle le lien (ou touche l'icône presse-papiers), appuie sur « Voir l'aperçu » puis « Télécharger en MP3 ».
+- Ou dans YouTube : **Partager** → **Music Downloader**, l'aperçu s'affiche et tu choisis de télécharger.
+- Pour un lien vers une vidéo dans une playlist, un interrupteur permet de prendre toute la playlist.
 
 Android 10 minimum. Usage personnel uniquement, dans le respect des droits d'auteur et des conditions d'utilisation de YouTube.

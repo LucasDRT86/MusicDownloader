@@ -3,6 +3,7 @@ name: Build APK
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -29,8 +30,17 @@ jobs:
       - name: Renommer l'APK
         run: cp app/build/outputs/apk/release/app-release.apk MusicDownloader.apk
 
+      # Sur une pull request, l'APK de test est disponible dans l'onglet "Actions"
+      - name: Garder l'APK de test
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: MusicDownloader-apk
+          path: MusicDownloader.apk
+
       # Publie l'APK dans l'onglet "Releases" du dépôt : téléchargeable directement depuis le téléphone
       - name: Publier la release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
