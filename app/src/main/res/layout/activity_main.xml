@@ -202,6 +202,57 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
+        <!-- Téléchargement en cours (fait par le service, continue en arrière-plan) -->
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/downloadCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginEnd="16dp"
+            android:visibility="gone"
+            app:cardBackgroundColor="@color/surface"
+            app:cardCornerRadius="24dp"
+            app:cardElevation="4dp"
+            app:strokeWidth="0dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:id="@+id/downloadTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="2"
+                    android:textColor="@color/on_surface"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <com.google.android.material.progressindicator.LinearProgressIndicator
+                    android:id="@+id/downloadProgress"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:indeterminate="true"
+                    android:max="100"
+                    app:indicatorColor="@color/brand_pink"
+                    app:trackCornerRadius="4dp"
+                    app:trackThickness="8dp" />
+
+                <TextView
+                    android:id="@+id/downloadMessage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textColor="@color/on_surface_muted"
+                    android:textSize="14sp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
         <!-- Progression et messages -->
         <com.google.android.material.progressindicator.LinearProgressIndicator
             android:id="@+id/progressBar"
