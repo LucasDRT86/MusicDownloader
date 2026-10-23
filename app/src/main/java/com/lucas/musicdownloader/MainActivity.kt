@@ -1,38 +1,36 @@
 package com.lucas.musicdownloader
 
+import android.Manifest
 import android.content.ClipboardManager
-import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
-import android.os.Environment
-import android.provider.MediaStore
 import android.view.View
-import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
-import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.io.File
 import java.net.URL
 
 class MainActivity : AppCompatActivity() {
@@ -59,9 +57,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var progressBar: LinearProgressIndicator
     private lateinit var statusText: TextView
 
-    private val initMutex = Mutex()
-    private var initialized = false
+    private lateinit var downloadCard: MaterialCardView
+    private lateinit var downloadTitle: TextView
+    private lateinit var downloadMessage: TextView
+    private lateinit var downloadProgress: LinearProgressIndicator
+
     private var busy = false
+
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     // Résultat de la dernière analyse
     private var currentUrl: String? = null
@@ -85,6 +89,10 @@ class MainActivity : AppCompatActivity() {
         downloadButton = findViewById(R.id.downloadButton)
         progressBar = findViewById(R.id.progressBar)
         statusText = findViewById(R.id.statusText)
+        downloadCard = findViewById(R.id.downloadCard)
+        downloadTitle = findViewById(R.id.downloadTitle)
+        downloadMessage = findViewById(R.id.downloadMessage)
+        downloadProgress = findViewById(R.id.downloadProgress)
 
         urlLayout.setEndIconOnClickListener {
             val clipboard = getSystemService(ClipboardManager::class.java)
@@ -107,8 +115,13 @@ class MainActivity : AppCompatActivity() {
         }
         previewButton.setOnClickListener { analyze(urlInput.text.toString()) }
         playlistSwitch.setOnCheckedChangeListener { _, _ -> showSelectedInfo() }
-        downloadButton.setOnClickListener {
-            currentUrl?.let { download(it, isPlaylistSelected()) }
+        downloadButton.setOnClickListener { startDownload() }
+
+        // Affiche l'avancement du service de téléchargement
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                DownloadState.status.collect { showDownloadStatus(it) }
+            }
         }
 
         // On prépare yt-dlp dès l'ouverture pour que l'aperçu soit plus rapide
@@ -287,135 +300,51 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- Téléchargement ----------
 
-    private fun download(url: String, playlist: Boolean) {
-        if (busy) return
-        setBusy(true, indeterminate = true)
-        // Évite que l'écran s'éteigne pendant une longue playlist
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-
-        lifecycleScope.launch {
-            try {
-                ensureInitialized()
-                setStatus("Téléchargement…")
-                val tmpDir = File(cacheDir, "downloads").apply {
-                    deleteRecursively()
-                    mkdirs()
-                }
-
-                val error = withContext(Dispatchers.IO) {
-                    val output = if (playlist) {
-                        "${tmpDir.absolutePath}/%(playlist_title)s/%(playlist_index)s - %(title)s.%(ext)s"
-                    } else {
-                        "${tmpDir.absolutePath}/%(title)s.%(ext)s"
-                    }
-                    val request = YoutubeDLRequest(url).apply {
-                        addOption(if (playlist) "--yes-playlist" else "--no-playlist")
-                        addOption("-x") // audio uniquement
-                        addOption("--audio-format", "mp3")
-                        addOption("--audio-quality", "0")
-                        addOption("--add-metadata")
-                        addOption("--windows-filenames") // évite les caractères refusés par Android
-                        if (playlist) addOption("--ignore-errors") // une vidéo indisponible ne bloque pas le reste
-                        addOption("-o", output)
-                    }
-                    var item = ""
-                    try {
-                        YoutubeDL.getInstance().execute(request) { progress, _, line ->
-                            Regex("Downloading item (\\d+) of (\\d+)").find(line)?.let {
-                                item = "Titre ${it.groupValues[1]}/${it.groupValues[2]} · "
-                            }
-                            runOnUiThread {
-                                if (progress > 0) {
-                                    progressBar.isIndeterminate = false
-                                    progressBar.setProgressCompat(progress.toInt(), true)
-                                }
-                                statusText.text = "${item}Téléchargement… ${progress.toInt().coerceAtLeast(0)} %"
-                            }
-                        }
-                        null
-                    } catch (e: Exception) {
-                        // Pour une playlist, certaines vidéos ont pu réussir : on enregistre quand même
-                        e
-                    }
-                }
-
-                setStatus("Enregistrement dans Musique…")
-                progressBar.isIndeterminate = true
-                val saved = withContext(Dispatchers.IO) {
-                    tmpDir.walkTopDown()
-                        .filter { it.isFile && it.extension == "mp3" }
-                        .sortedBy { it.path }
-                        .map { saveToMusic(it, tmpDir) }
-                        .toList()
-                }
-                tmpDir.deleteRecursively()
-
-                when {
-                    saved.isEmpty() && error != null ->
-                        setStatus("❌ Échec du téléchargement.\n${shortError(error)}")
-                    saved.isEmpty() ->
-                        setStatus("Aucun fichier MP3 obtenu.")
-                    playlist -> {
-                        val failed = if (error != null) "\n⚠️ Certains titres n'ont pas pu être téléchargés." else ""
-                        setStatus("✅ ${saved.size} titres enregistrés dans Musique/MusicDownloader$failed")
-                    }
-                    else ->
-                        setStatus("✅ Enregistré dans Musique/MusicDownloader :\n${saved.joinToString("\n")}")
-                }
-            } catch (e: Exception) {
-                setStatus("❌ Erreur : ${shortError(e)}")
-            } finally {
-                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                setBusy(false)
-            }
+    // Le téléchargement tourne dans un service : il continue si on quitte l'app
+    private fun startDownload() {
+        val url = currentUrl ?: return
+        val playlist = isPlaylistSelected()
+        val info = if (playlist) playlistInfo else videoInfo
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // Pour voir la progression dans les notifications (le téléchargement marche même si refusé)
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+        val alreadyRunning = DownloadState.status.value.active
+        DownloadService.start(this, url, playlist, info?.title.orEmpty())
+        Toast.makeText(
+            this,
+            if (alreadyRunning) "Ajouté à la file d'attente" else "Téléchargement lancé, tu peux quitter l'app",
+            Toast.LENGTH_SHORT,
+        ).show()
     }
 
-    // Copie le MP3 dans le dossier public Musique pour qu'il apparaisse dans les lecteurs audio.
-    // Les playlists vont dans un sous-dossier à leur nom.
-    private fun saveToMusic(file: File, root: File): String {
-        val subFolder = file.parentFile?.relativeTo(root)?.path.orEmpty()
-        val relativePath = listOf(Environment.DIRECTORY_MUSIC, "MusicDownloader", subFolder)
-            .filter { it.isNotEmpty() }
-            .joinToString("/")
-        val values = ContentValues().apply {
-            put(MediaStore.Audio.Media.DISPLAY_NAME, file.name)
-            put(MediaStore.Audio.Media.MIME_TYPE, "audio/mpeg")
-            put(MediaStore.Audio.Media.RELATIVE_PATH, relativePath)
-            put(MediaStore.Audio.Media.IS_PENDING, 1)
+    private fun showDownloadStatus(status: DownloadStatus) {
+        if (status.message.isEmpty() && !status.active) {
+            downloadCard.visibility = View.GONE
+            return
         }
-        val uri = contentResolver.insert(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, values)
-            ?: throw IllegalStateException("Impossible de créer le fichier dans Musique")
-        contentResolver.openOutputStream(uri).use { out ->
-            file.inputStream().use { input -> input.copyTo(out!!) }
+        downloadCard.visibility = View.VISIBLE
+        downloadTitle.text = status.title
+        downloadMessage.text =
+            if (status.queued > 0) "${status.message}\n+${status.queued} en attente" else status.message
+        if (status.active) {
+            downloadProgress.visibility = View.VISIBLE
+            if (status.progress < 0) {
+                downloadProgress.isIndeterminate = true
+            } else {
+                downloadProgress.isIndeterminate = false
+                downloadProgress.setProgressCompat(status.progress, true)
+            }
+        } else {
+            downloadProgress.visibility = View.GONE
         }
-        values.clear()
-        values.put(MediaStore.Audio.Media.IS_PENDING, 0)
-        contentResolver.update(uri, values, null, null)
-        return file.nameWithoutExtension
     }
 
     // ---------- Outils ----------
 
-    // Prépare yt-dlp et ffmpeg, puis met yt-dlp à jour (YouTube change souvent)
-    private suspend fun ensureInitialized() = initMutex.withLock {
-        if (initialized) return@withLock
-        setStatus("Préparation (première fois, ça peut prendre un moment)…")
-        withContext(Dispatchers.IO) {
-            YoutubeDL.getInstance().init(applicationContext)
-            FFmpeg.getInstance().init(applicationContext)
-        }
-        setStatus("Mise à jour de yt-dlp…")
-        try {
-            withContext(Dispatchers.IO) {
-                YoutubeDL.getInstance().updateYoutubeDL(applicationContext, YoutubeDL.UpdateChannel.STABLE)
-            }
-        } catch (e: Exception) {
-            // Pas bloquant : on tente quand même avec la version embarquée
-        }
-        initialized = true
-        setStatus("")
-    }
+    private suspend fun ensureInitialized() = Ytdl.ensureInitialized(this) { setStatus(it) }
 
     private fun setBusy(value: Boolean, indeterminate: Boolean = false) {
         busy = value
@@ -430,11 +359,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Les erreurs de yt-dlp sont longues : on garde la ligne utile
-    private fun shortError(e: Exception): String {
-        val message = e.message ?: return e.javaClass.simpleName
-        return message.lines().lastOrNull { it.contains("ERROR") }?.trim() ?: message.lines().first().take(300)
-    }
+    private fun shortError(e: Exception) = Ytdl.shortError(e)
 
     private fun setStatus(text: String) {
         statusText.text = text

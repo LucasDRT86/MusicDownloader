@@ -15,5 +15,6 @@ Sur le téléphone : ouvre la dernière release, télécharge `MusicDownloader.a
 - Ouvre l'app, colle le lien (ou touche l'icône presse-papiers), appuie sur « Voir l'aperçu » puis « Télécharger en MP3 ».
 - Ou dans YouTube : **Partager** → **Music Downloader**, l'aperçu s'affiche et tu choisis de télécharger.
 - Pour un lien vers une vidéo dans une playlist, un interrupteur permet de prendre toute la playlist.
+- Le téléchargement continue en arrière-plan (notification avec progression et bouton Annuler). Si tu lances plusieurs téléchargements, ils s'enchaînent dans une file d'attente.
 
 Android 10 minimum. Usage personnel uniquement, dans le respect des droits d'auteur et des conditions d'utilisation de YouTube.

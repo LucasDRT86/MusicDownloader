@@ -11,8 +11,8 @@ android {
         applicationId = "com.lucas.musicdownloader"
         minSdk = 29 // Android 10 et plus
         targetSdk = 34
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 3
+        versionName = "1.2"
         ndk {
             // Les téléphones récents : on évite d'embarquer x86 pour alléger l'APK
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
